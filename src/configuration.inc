@@ -23,3 +23,9 @@
 %ifndef INJECT_FAILURE
 %define INJECT_FAILURE 0
 %endif
+
+; Enable only when the system responds to CPU shutdown by asserting RESET
+; while retaining RAM. Tests all eight general registers across two RESETs.
+%ifndef RESET_ON_TRIPLE_FAULT
+%define RESET_ON_TRIPLE_FAULT 0
+%endif

@@ -45,7 +45,7 @@
     org     0
 
 %define VERSION_MAJOR 1
-%define VERSION_MINOR 0
+%define VERSION_MINOR 1
 %define VERSION_PATCH 0
 %defstr VERSION_STRING VERSION_MAJOR %+ . %+ VERSION_MINOR %+ . %+ VERSION_PATCH
 
@@ -57,11 +57,15 @@
 %include "configuration.inc"
 %include "x86_e.inc"
 %include "macros_m.inc"
+%if RESET_ON_TRIPLE_FAULT
+%include "tests/reset_m.inc"
+%endif
 
 ;
 ;   Physical memory map (hexadecimal addresses):
 ;   00000-003FF  Real mode interrupt vector table
 ;   00400-0057F  Protected mode IDT (vectors 00h-2Fh)
+;   00580-00585  Optional triple-fault RESET continuation record
 ;   00600-007FF  Protected mode GDT allocation
 ;   00A00-00FFF  Protected mode LDT allocation
 ;   05000-0502B  Current task's 286 TSS
@@ -95,6 +99,10 @@ header:
 cpuTest:
     cli
     cld
+%if RESET_ON_TRIPLE_FAULT
+    ; Dispatch without changing a general register or using the reset stack.
+    resetResumeDispatch286
+%endif
 
 
 ; ==============================================================================
@@ -220,8 +228,15 @@ cpuTest:
     advTestSegReal
 
 ; ==============================================================================
-; Protected mode tests
+; Optional RESET test, then protected mode tests
 ; ==============================================================================
+
+%if RESET_ON_TRIPLE_FAULT
+;-------------------------------------------------------------------------------
+    POST 07
+;-------------------------------------------------------------------------------
+    testReset286
+%endif
 
 ;-------------------------------------------------------------------------------
     POST 8

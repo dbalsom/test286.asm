@@ -17,7 +17,7 @@ be initialized or attached.
 **test286.asm** does not test every aspect of the 80286. It
 covers real and protected mode, privilege transitions, 286 task switching,
 and what byte/word arithmetic operations could be retained from test386. The 
-full test suite has completed on a physical Harris 80C286.
+full default test suite has completed on a physical Harris 80C286.
 
 See [How to use](#how-to-use) for the tests and their diagnostic codes.
 The default build runs self-checking tests followed by **44 BCD observations**
@@ -27,8 +27,9 @@ can cause crashes or loops.
 
 The tests target the 80286 instruction set, using 286 descriptors, gates and
 44-byte task-state segments. They omit 386-only functionality such as 32-bit
-operands and addressing, paging, virtual-8086 mode, `FS`/`GS`, SETcc, bit scan/test
-instructions and SHLD/SHRD. The port remains in protected mode until it halts.
+operands and addressing, paging, virtual-8086 mode, `FS`/`GS`, SETcc, bit 
+scan/test instructions and SHLD/SHRD. After POST `08`, **test286.asm** remains
+in protected mode until it halts.
 
 ### Realistic expectations
 
@@ -67,6 +68,7 @@ below on each invocation; override them using `-D` options:
 | `OUT_PORT`       | `0x191` | ASCII output port; zero disables text       |
 | `TRACE_ARITH`    | `ON`    | Emit the `EE` arithmetic observation stream |
 | `INJECT_FAILURE` | `OFF`   | Deliberately fail an assertion at POST `02` |
+| `RESET_ON_TRIPLE_FAULT` | `OFF` | Test return to real mode and general-register preservation when the system resets on triple fault |
 
 From the repository root:
 
@@ -99,11 +101,33 @@ nasm -I src/ -f bin -Wall -Werror -l test286.lst -o test286.bin src/test286.asm
 For direct assembly, override configuration values with NASM `-D` defines,
 using `0` or `1` for switches.
 
+If the emulator or system asserts RESET when the CPU enters shutdown after a
+triple fault, enable the optional POST `07` tests:
+
+```sh
+cmake -DRESET_ON_TRIPLE_FAULT=ON -DOUTPUT_DIR=output/reset -P build.cmake
+```
+
+The NASM equivalent is `-DRESET_ON_TRIPLE_FAULT=1`. These tests deliberately
+triple-fault twice, using complementary patterns in `AX`, `CX`, `DX`, `BX`,
+`SP`, `BP`, `SI` and `DI`. Each reset-vector continuation checks all eight
+registers before changing one or using the stack, then checks that `MSW.PE`
+is clear. The preservation expectation follows the Harris 80C286 RESET
+microcode, which has no decoded writes to these registers.
+
+RAM must survive both resets. Reserve physical bytes 00580h-00585h for the
+continuation record and clear them before a new, independent run. The ROM
+arms this record before the test and clears it after the second continuation.
+
+With this option disabled, no shutdown/reset handling is required.
+
+### Output 
+
 The final product is **test286.bin**, exactly **65,536 bytes**. 
 
 CMake also produces `test286.lst` and `build.json`, checks the ROM size and
 far-jump opcode at the reset vector, and records source hashes and build options.
-The image begins with a NUL-terminated version string (`test286.asm v1.0.0`);
+The image begins with a NUL-terminated version string (`test286.asm v1.1.0`);
 the release date is generated at assembly time.
 
 To package an existing build into a release ZIP, run with Python 3:
@@ -114,7 +138,7 @@ python package_release.py
 
 This writes `output/test286_vMAJOR.MINOR.PATCH_YYYY_MM_DD.zip`, using the version
 from the ROM header and the current local date, for example
-`test286_v1.0.0_2026_11_05.zip`.
+`test286_v1.1.0_2026_11_07.zip`.
 It contains `test286.bin`, `test286.lst`, `README.md`, `COPYING`, `CHANGELOG.md`
 and `test286.bin.sha256`. The checksum file uses the `sha256sum` format.
 Use `--build-dir` to select another build directory and `--output-dir` to
@@ -154,6 +178,10 @@ Match the code-segment `IP` to the listing's offset column.
 An unexpected reset or endless loop can also indicate a failure in stack
 handling, CALL/RET, or exception entry.
 
+With `RESET_ON_TRIPLE_FAULT=ON`, the ROM triggers two resets during POST `07`.
+It uses a continuation record in RAM to check the results after each reset,
+then automatically continues at POST `08` without repeating the earlier tests.
+
 Unexpected exceptions normally enter the common error routine. A wrong error
 code or saved `CS:IP` in an expected-fault test also branches there. These failures
 retain the current POST code and print the same `FAIL` message; there are no
@@ -173,8 +201,9 @@ their own current POST code on failure.
 
 These are the tests in execution order. POST values mostly follow `test386.asm`.
 The sequence is not numerical: the ring and task tests (`20` and `22`) run
-immediately after the stack tests (`09`). Protected mode is entered at `08`
-and remains active for all subsequent tests. BOUND runs once, at `18`.
+immediately after the stack tests (`09`). The optional `07` phase briefly
+enters protected mode for each RESET test. At `08`, protected mode is entered
+for all subsequent tests. BOUND runs once, at `18`.
 
 | POST | Description                                                                                                           |
 | ---- | --------------------------------------------------------------------------------------------------------------------- |
@@ -185,6 +214,7 @@ and remains active for all subsequent tests. BOUND runs once, at `18`.
 | `04` | Byte/word string operations in real mode: both directions, REP/REPE and index wrap                                    |
 | `05` | Direct/indirect near and far CALL/RET and stack-depth checks in real mode                                             |
 | `06` | LDS/LES pointer loads in real mode                                                                                    |
+| `07` | Optional triple-fault RESETs; preservation of all eight general registers and return to real mode                     |
 | `08` | GDT/IDT/LDT setup, protected-mode entry, LLDT and LTR                                                                 |
 | `09` | Register, segment, immediate and memory PUSH/POP; PUSH `SP`, PUSHA/POPA and PUSHF/POPF                                |
 | `20` | Ring transitions, `IOPL` permissions, privileged-instruction faults, interrupt frames and call-gate parameter copying |
@@ -283,6 +313,7 @@ results. This is the memory map (hexadecimal physical addresses):
 | --------------------------- | ------------------------------------------------------------------------- |
 | 00000-003FF                 | Real-mode IVT; vectors 0 through 16 are initialized                       |
 | 00400-0057F                 | Protected-mode IDT, vectors 00h through 2Fh                               |
+| 00580-00585                 | Continuation record when `RESET_ON_TRIPLE_FAULT` is enabled               |
 | 00600-007FF                 | GDT allocation                                                            |
 | 00A00-00FFF                 | LDT allocation                                                            |
 | 05000-0502B                 | Current task's 44-byte 286 TSS                                            |

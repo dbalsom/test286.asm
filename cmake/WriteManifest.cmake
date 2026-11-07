@@ -35,7 +35,7 @@ foreach(source IN LISTS sources)
 endforeach()
 
 set(defines "{}")
-foreach(define IN ITEMS POST_PORT OUT_PORT TRACE_ARITH INJECT_FAILURE)
+foreach(define IN ITEMS POST_PORT OUT_PORT TRACE_ARITH INJECT_FAILURE RESET_ON_TRIPLE_FAULT)
     string(JSON defines SET "${defines}" "${define}" "${${define}}")
 endforeach()
 

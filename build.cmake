@@ -6,6 +6,7 @@ set(SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}")
 find_program(NASM_EXECUTABLE NAMES nasm REQUIRED)
 option(TRACE_ARITH "Emit the EE arithmetic observation stream" ON)
 option(INJECT_FAILURE "Deliberately fail an assertion in POST 02" OFF)
+option(RESET_ON_TRIPLE_FAULT "System resets the CPU on triple fault; test RESET and register retention" OFF)
 set(POST_PORT "0x190" CACHE STRING "Write-only POST output port")
 set(OUT_PORT "0x191" CACHE STRING "Write-only ASCII output port (0 disables text)")
 set(OUTPUT_DIR "${SOURCE_DIR}/output" CACHE PATH "Directory for the ROM, listing and manifest")
@@ -20,7 +21,7 @@ foreach(port IN ITEMS POST_PORT OUT_PORT)
     endif()
 endforeach()
 
-foreach(switch IN ITEMS TRACE_ARITH INJECT_FAILURE)
+foreach(switch IN ITEMS TRACE_ARITH INJECT_FAILURE RESET_ON_TRIPLE_FAULT)
     if(${switch})
         set(${switch} 1)
     else()
@@ -40,6 +41,7 @@ execute_process(
     COMMAND "${NASM_EXECUTABLE}"
         -I "${SOURCE_DIR}/src/" -f bin -Wall -Werror
         "-DTRACE_ARITH=${TRACE_ARITH}" "-DINJECT_FAILURE=${INJECT_FAILURE}"
+        "-DRESET_ON_TRIPLE_FAULT=${RESET_ON_TRIPLE_FAULT}"
         "-DPOST_PORT=${POST_PORT}" "-DOUT_PORT=${OUT_PORT}"
         -l "${OUTPUT_DIR}/test286.lst" -o "${ROM_PATH}" "${SOURCE_DIR}/src/test286.asm"
     COMMAND_ERROR_IS_FATAL ANY)
