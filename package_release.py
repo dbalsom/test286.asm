@@ -35,9 +35,16 @@ def main():
             raise ValueError("test286.bin has no valid version header")
         version = header.group(1).decode("ascii")
 
-        # Calculate digest file and write it
-        digest = hashlib.sha256(contents["test286.bin"]).hexdigest()
-        contents["test286.bin.sha256"] = f"{digest}  test286.bin\n".encode("ascii")
+        # Split alternating byte addresses into two 32 KiB ROM images.
+        contents["test286_even.bin"] = contents["test286.bin"][0::2]
+        contents["test286_odd.bin"] = contents["test286.bin"][1::2]
+
+        # Include a sha256sum-compatible checksum file for each ROM image.
+        digests = {}
+        for name in ("test286.bin", "test286_even.bin", "test286_odd.bin"):
+            digest = hashlib.sha256(contents[name]).hexdigest()
+            digests[name] = digest
+            contents[f"{name}.sha256"] = f"{digest}  {name}\n".encode("ascii")
 
         # Create output dir
         args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -52,7 +59,8 @@ def main():
         parser.exit(1, f"Error: {error}\n")
 
     print(archive.resolve())
-    print(f"SHA-256: {digest}  test286.bin")
+    for name, digest in digests.items():
+        print(f"SHA-256: {digest}  {name}")
     
     return 0
 
