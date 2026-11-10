@@ -36,7 +36,14 @@ kernelInterrupt286:
     jne     error                       ; Invalid return IP
     cmp     word [ss:bp+4], CU_SEG_PROT16|3
     jne     error                       ; Invalid return CS
-    ; Ignore saved FLAGS at SS:BP+6.
+    test    word [ss:bp+6], PS_IF
+    jz      error                       ; Caller entered with IF set
+    push    ax
+    pushf
+    pop     ax
+    test    ax, PS_IF
+    jnz     error                       ; Interrupt gate cleared live IF
+    pop     ax
     cmp     word [ss:bp+8], SP_R3_PROT
     jne     error                       ; Invalid return SP
     cmp     word [ss:bp+10], SU_SEG_PROT16|3
@@ -77,7 +84,14 @@ kernelOnlyInterrupt:
     jne     error                       ; Invalid return IP
     cmp     word [ss:bp+4],C_SEG_PROT16
     jne     error                       ; Invalid return CS
-    ; Ignore saved FLAGS at SS:BP+6.
+    test    word [ss:bp+6], PS_IF
+    jz      error                       ; Caller entered with IF set
+    push    ax
+    pushf
+    pop     ax
+    test    ax, PS_IF
+    jnz     error                       ; Interrupt gate cleared live IF
+    pop     ax
     pop     bp
     iret                                ; Return to the caller at CPL 0
 
@@ -109,7 +123,14 @@ kernelConformingInterrupt:
     jne     error                       ; Invalid return IP
     cmp     word [ss:bp+4], CU_SEG_PROT16|3
     jne     error                       ; Invalid return CS
-    ; Ignore saved FLAGS at SS:BP+6.
+    test    word [ss:bp+6], PS_IF
+    jz      error                       ; Caller entered with IF set
+    push    ax
+    pushf
+    pop     ax
+    test    ax, PS_IF
+    jnz     error                       ; Interrupt gate cleared live IF
+    pop     ax
     pop     bp
     iret                                ; Return to the caller at CPL 3
 
@@ -146,7 +167,14 @@ kernelOnlyConformingInterrupt:
     jne     error                       ; Invalid return IP
     cmp     word [ss:bp+4],C_SEG_PROT16
     jne     error                       ; Invalid return CS
-    ; Ignore saved FLAGS at SS:BP+6.
+    test    word [ss:bp+6], PS_IF
+    jz      error                       ; Caller entered with IF set
+    push    ax
+    pushf
+    pop     ax
+    test    ax, PS_IF
+    jnz     error                       ; Interrupt gate cleared live IF
+    pop     ax
     pop     bp
     iret                                ; Return to the caller at CPL 0
 
@@ -178,6 +206,13 @@ userModeInterrupt:
     jne     error                       ; Invalid return IP
     cmp     word [ss:bp+4],CU_SEG_PROT16|3
     jne     error                       ; Invalid return CS
-    ; Ignore saved FLAGS at SS:BP+6.
+    test    word [ss:bp+6], PS_IF
+    jz      error                       ; Caller entered with IF set
+    push    ax
+    pushf
+    pop     ax
+    test    ax, PS_IF
+    jnz     error                       ; Interrupt gate cleared live IF
+    pop     ax
     pop     bp
     iret                                ; Return to the caller at CPL 3

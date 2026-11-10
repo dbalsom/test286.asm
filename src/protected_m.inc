@@ -256,6 +256,21 @@
     setProtModeIntGate %1, DefaultExcHandler, ACC_DPL_0
 %endmacro
 
+; Checks IF immediately after IRET. Preserves general registers.
+; %1: expected IF (0 or 1). IRET at CPL > IOPL cannot change IF.
+%macro checkInterruptReturnIF 1
+    push    ax
+    pushf
+    pop     ax
+    test    ax, PS_IF
+    %if %1
+        jz      error
+    %else
+        jnz     error
+    %endif
+    pop     ax
+%endmacro
+
 ; Checks an exception result and discards the same-ring exception frame.
 ;
 ; %1: vector.

@@ -45,7 +45,7 @@
     org     0
 
 %define VERSION_MAJOR 1
-%define VERSION_MINOR 1
+%define VERSION_MINOR 2
 %define VERSION_PATCH 0
 %defstr VERSION_STRING VERSION_MAJOR %+ . %+ VERSION_MINOR %+ . %+ VERSION_PATCH
 
@@ -197,6 +197,11 @@ cpuTest:
     testStringReps b,1
     testStringReps w,1
 
+    testStringEdges b,0
+    testStringEdges w,0
+    testStringEdges b,1
+    testStringEdges w,1
+
     advTestSegReal
 
 
@@ -226,6 +231,73 @@ cpuTest:
     testLoadPtr es
 
     advTestSegReal
+
+%include "tests/flags_m.inc"
+;-------------------------------------------------------------------------------
+    POST 1D
+;-------------------------------------------------------------------------------
+;
+;   Flag instructions in real mode
+;
+    mov     ax, S_SEG_REAL
+    mov     ss, ax
+    mov     sp, SP_REAL
+    testCarryFlagInstructions
+    testDirectionFlagInstructions
+    testInterruptFlagInstructions
+
+%include "tests/dtr_m.inc"
+;-------------------------------------------------------------------------------
+    POST 1E
+;-------------------------------------------------------------------------------
+;
+;   Load and store GDTR/IDTR in real mode
+;
+    testDTR lidt, sidt
+    testDTR lgdt, sgdt
+
+%include "tests/xlat_m.inc"
+;-------------------------------------------------------------------------------
+    POST 1F
+;-------------------------------------------------------------------------------
+;
+;   XLAT in real mode, with zero/nonzero bases and clear/set arithmetic flags
+;
+    testXlat 0, 2
+    testXlat 0, PS_ARITH|2
+    testXlat 0x12F0, 2
+    testXlat 0x12F0, PS_ARITH|2
+
+;-------------------------------------------------------------------------------
+    POST 23
+;-------------------------------------------------------------------------------
+;
+;   Software interrupts in real mode; no PIT or PIC is required
+;
+    push    ds
+    pushf
+    realModeExcInit 0x20, realmodeInterrupt
+    xor     di, di                      ; Count entries into the test handler
+    mov     ax, sp                      ; Expected SP after IRET
+    push    word PS_IF|PS_CF|2
+    popf
+    int     0x20
+realmodeInterruptRET:
+    pushf                               ; Capture restored FLAGS before CMP
+    pop     dx
+    cmp     dx, PS_IF|PS_CF|2
+    jne     error
+    cmp     sp, ax
+    jne     error
+    cmp     di, 1
+    jne     error                       ; INT must have invoked the handler once
+    cli
+    realModeExcInit 0x20, error
+    popf
+    pop     ds
+    jmp     realmodeInterruptDone
+%include "real_inth.inc"
+realmodeInterruptDone:
 
 ; ==============================================================================
 ; Optional RESET test, then protected mode tests
@@ -407,6 +479,8 @@ initLDT:
     mov     ax, TSS_PROT
     ltr     ax                          ; Select the current task's TSS
     loadProtModeStack
+%include "tests/system_m.inc"
+    testLMSWStickyPE
     jmp     protTests
 %include "tss_p.inc"
 %include "protected_rings_p.inc"
@@ -525,16 +599,26 @@ protTests:
     ; A user INT through the DPL-0 gate must fault; the error code identifies
     ; IDT entry 23h (23h * 8 = 118h, with the IDT bit set).
     protModeFaultTest EX_GP, 0x118|2, int 0x23
+    ; Fault helpers discard FLAGS instead of using IRET. Re-enter user mode
+    ; through the kernel so the interrupt-frame tests start with IF set.
+    call    switchToRing0
+    call    switchToRing3
     ; The handler checks assume the initial user stack, SU_SEG_PROT16:SP_R3_PROT.
     ; Interrupt from user mode to kernel mode through a 16-bit gate.
     int     0x27
 kernelModeInterruptReturn286:
+    checkInterruptReturnIF 1            ; CPL-0 IRET restores the caller's IF
     ; Interrupt into conforming kernel code; execution stays at CPL 3.
     int     0x21
 kernelConformingInterruptReturn:
+    ; This IRET executes at CPL 3 with IOPL 0, so it cannot restore IF.
+    checkInterruptReturnIF 0
+    call    switchToRing0
+    call    switchToRing3               ; Start the next INT with IF set again
     ; Interrupt from user mode to user mode without a stack switch.
     int     0x22
 userInterruptReturn:
+    checkInterruptReturnIF 0            ; Same CPL-3/IOPL-0 restriction
     call    CU_SEG_PROT16|3:userFarFunc   ; User mode far call test
     jmp     CU_SEG_PROT16|3:userJmpFunc   ; User mode far jump test
 userFarFunc:
@@ -560,15 +644,20 @@ userJmpFunc:
     jmp     testCallGateWithParameters
 ring0_2TestEndLocation:
     ; Test the kernel-only interrupt without changing privilege.
+    sti                                 ; Verify that the interrupt gate clears IF
     mov     ax, sp                      ; Save the pre-INT SP for the handler's check
     int     0x23
 kernelModeOnlyInterruptReturn:
+    checkInterruptReturnIF 1
     ; An interrupt cannot transfer from kernel code to less-privileged user code.
     protModeFaultTest EX_GP, CU_SEG_PROT16, int 0x22
     ; Interrupt from kernel mode to conforming kernel code, still at CPL 0.
+    sti                                 ; The preceding fault helper left IF clear
     mov     ax, sp                      ; Save the pre-INT SP for the handler's check
     int     0x24
 kernelOnlyConformingInterruptReturn:
+    checkInterruptReturnIF 1
+    cli
 
 ;-------------------------------------------------------------------------------
     POST 22
@@ -582,6 +671,7 @@ kernelOnlyConformingInterruptReturn:
     call    initTSS16
     validateTSSbusy286 TSS_PROT, 1
     validateTSSbusy286 TSS_PROT16, 0
+    testLTRBusy286
     ; Enter the second task through an IDT task gate; its IRET returns here.
     int     0x28
     mov     ax, DU_SEG_PROT|3
@@ -731,6 +821,10 @@ postD:
     testStringReps w,0
     testStringReps b,1
     testStringReps w,1
+    testStringEdges b,0
+    testStringEdges w,0
+    testStringEdges b,1
+    testStringEdges w,1
     popf
     popa
     advTestSegProt
@@ -765,6 +859,11 @@ postD:
     updLDTDesc DTEST_SEG_PROT, TEST_BASE, 0xFFFF, ACC_PRESENT|ACC_TYPE_DATA_W
     mov     ax, D1_SEG_PROT
     mov     ds, ax
+
+%include "tests/segment_m.inc"
+    ; Check the same limit boundaries through both data-segment registers.
+    testSegmentLimits ds, es
+    testSegmentLimits es, ds
     advTestSegProt
 ;-------------------------------------------------------------------------------
     POST 16
@@ -916,7 +1015,7 @@ post1C:
     POST 1C
 ;-------------------------------------------------------------------------------
 ;
-;   Verify a Segment for Reading or Writing (VERR/VERW)
+;   Verify access and query descriptor rights/limits (VERR/VERW, LAR/LSL)
 ;
     ; null segment
     testVERR NULL,0
@@ -955,7 +1054,10 @@ post1C:
     testVERW ROU_SEG_PROT,0
     call    switchToRing0
 
+%include "tests/descriptor_m.inc"
+    testDescriptorQueries
     jmp     arithLogicTests
+    
 %include "print_p.inc"
 %include "tests/bcd_m.inc"
 %include "tests/arith-logic_m.inc"

@@ -62,13 +62,13 @@ Direct NASM builds use the defaults in
 [src/configuration.inc](src/configuration.inc). CMake supplies the defaults
 below on each invocation; override them using `-D` options:
 
-| CMake option     | Default | Purpose                                     |
-| ---------------- | ------- | ------------------------------------------- |
-| `POST_PORT`      | `0x190` | Diagnostic POST port                        |
-| `OUT_PORT`       | `0x191` | ASCII output port; zero disables text       |
-| `TRACE_ARITH`    | `ON`    | Emit the `EE` arithmetic observation stream |
-| `INJECT_FAILURE` | `OFF`   | Deliberately fail an assertion at POST `02` |
-| `RESET_ON_TRIPLE_FAULT` | `OFF` | Test return to real mode and general-register preservation when the system resets on triple fault |
+| CMake option            | Default | Purpose                                                                                           |
+| ----------------------- | ------- | ------------------------------------------------------------------------------------------------- |
+| `POST_PORT`             | `0x190` | Diagnostic POST port                                                                              |
+| `OUT_PORT`              | `0x191` | ASCII output port; zero disables text                                                             |
+| `TRACE_ARITH`           | `ON`    | Emit the `EE` arithmetic observation stream                                                       |
+| `INJECT_FAILURE`        | `OFF`   | Deliberately fail an assertion at POST `02`                                                       |
+| `RESET_ON_TRIPLE_FAULT` | `OFF`   | Test return to real mode and general-register preservation when the system resets on triple fault |
 
 From the repository root:
 
@@ -127,23 +127,9 @@ The final product is **test286.bin**, exactly **65,536 bytes**.
 
 CMake also produces `test286.lst` and `build.json`, checks the ROM size and
 far-jump opcode at the reset vector, and records source hashes and build options.
-The image begins with a NUL-terminated version string (`test286.asm v1.1.0`);
+The image begins with a NUL-terminated version string (`test286.asm v1.2.0`);
 the release date is generated at assembly time.
 
-To package an existing build into a release ZIP, run with Python 3:
-
-```sh
-python package_release.py
-```
-
-This writes `output/test286_vMAJOR.MINOR.PATCH_YYYY_MM_DD.zip`, using the version
-from the ROM header and the current local date, for example
-`test286_v1.1.0_2026_11_07.zip`.
-It contains `test286.bin`, `test286.lst`, `README.md`, `COPYING`, `CHANGELOG.md`
-and `test286.bin.sha256`. The checksum file uses the `sha256sum` format.
-Use `--build-dir` to select another build directory and `--output-dir` to
-choose where the ZIP is written. Running it again with the same version and
-date replaces that ZIP in the selected output directory.
 
 ## How to install
 
@@ -205,35 +191,39 @@ immediately after the stack tests (`09`). The optional `07` phase briefly
 enters protected mode for each RESET test. At `08`, protected mode is entered
 for all subsequent tests. BOUND runs once, at `18`.
 
-| POST | Description                                                                                                           |
-| ---- | --------------------------------------------------------------------------------------------------------------------- |
-| `00` | Real-mode initialization: stack, IVT and data segments                                                                |
-| `01` | Conditional jumps, JCXZ, LOOP wrap and LOOPE/LOOPNE termination                                                       |
-| `02` | Quick word IMUL execution and a MUL/DIV round-trip check; optional deliberate failure                                 |
-| `03` | Real-mode segment-register moves through registers and memory; MOV-to-`CS` #UD faults                                 |
-| `04` | Byte/word string operations in real mode: both directions, REP/REPE and index wrap                                    |
-| `05` | Direct/indirect near and far CALL/RET and stack-depth checks in real mode                                             |
-| `06` | LDS/LES pointer loads in real mode                                                                                    |
-| `07` | Optional triple-fault RESETs; preservation of all eight general registers and return to real mode                     |
-| `08` | GDT/IDT/LDT setup, protected-mode entry, LLDT and LTR                                                                 |
-| `09` | Register, segment, immediate and memory PUSH/POP; PUSH `SP`, PUSHA/POPA and PUSHF/POPF                                |
-| `20` | Ring transitions, `IOPL` permissions, privileged-instruction faults, interrupt frames and call-gate parameter copying |
-| `22` | 286 INT/task-gate/IRET and JMP task switching; register loads, `TR`/`LDTR`, backlink, `NT`/busy bits and `TS`/CLTS    |
-| `0B` | Protected-mode segment-register moves; #UD/#GP/#NP/#SS for invalid selectors, types, privileges and presence          |
-| `0C` | Immediate-byte PUSH sign extension, masking to a byte, and CBW/CWD                                                    |
-| `0D` | 16-bit LEA addressing forms and displacements                                                                         |
-| `0F` | Base/index memory addressing, `BP`/`SS` defaults and explicit `DS`/`ES` overrides                                     |
-| `10` | Byte/word string operations in protected mode: both directions, REP/REPE and index wrap                               |
-| `12` | Read-only data and byte/word segment-limit checks, including #GP and #SS faults                                       |
-| `16` | Direct/indirect near and far CALL/RET and stack-depth checks in protected mode                                        |
-| `17` | ARPL with register/memory operands, changed/unchanged `RPL` and an unchanged read-only destination                    |
-| `18` | BOUND within limits and above the upper limit; #BR handler adjusts the bound and IRET retries the instruction         |
-| `19` | Register/memory XCHG, including `SP`                                                                                  |
-| `1A` | ENTER allocation and frame copies at nesting levels 0, 1, 4 and 36 (masked to 4)                                      |
-| `1B` | LEAVE stack-frame restoration                                                                                         |
-| `1C` | VERR/VERW for null, out-of-table, system, code and data selectors at `CPL` 0 and `CPL` 3                              |
-| `EE` | 44 BCD observations, followed by 14,561 arithmetic/logical observations from 161 operation entries                    |
-| `FF` | Testing completed                                                                                                     |
+| POST | Description                                                                                                                      |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `00` | Real-mode initialization: stack, IVT and data segments                                                                           |
+| `01` | Conditional jumps, JCXZ, LOOP wrap and LOOPE/LOOPNE termination                                                                  |
+| `02` | Quick word IMUL execution and a MUL/DIV round-trip check; optional deliberate failure                                            |
+| `03` | Real-mode segment-register moves through registers and memory; MOV-to-`CS` #UD faults                                            |
+| `04` | Byte/word string operations in real mode: both directions, index wrap, zero-count REP and REPE/REPNE early termination           |
+| `05` | Direct/indirect near and far CALL/RET and stack-depth checks in real mode                                                        |
+| `06` | LDS/LES pointer loads in real mode                                                                                               |
+| `1D` | Real-mode CMC, CLC/STC, CLD/STD and CLI/STI; preservation of unrelated flags                                                     |
+| `1E` | LGDT/SGDT and LIDT/SIDT round trips with 24-bit bases, 16-bit limits and output-buffer guards                                    |
+| `1F` | XLAT for all 256 indices with zero/nonzero `BX` bases; preservation of `AH`, `BX` and flags                                      |
+| `23` | Real-mode software INT/IRET: saved `CS:IP` and flags, stack depth, handler execution and restored `SP`/`IF`                      |
+| `07` | Optional triple-fault RESETs; preservation of all eight general registers and return to real mode                                |
+| `08` | GDT/IDT/LDT setup, protected-mode entry, LLDT/LTR and LMSW register/memory checks that `PE` cannot be cleared                    |
+| `09` | Register, segment, immediate and memory PUSH/POP; PUSH `SP`, PUSHA/POPA and PUSHF/POPF                                           |
+| `20` | Ring transitions, `IOPL` permissions, privileged-instruction faults, interrupt frames/`IF` and call-gate parameter copying       |
+| `22` | INT/task-gate/IRET/JMP task switches; registers, `TR`/`LDTR`, backlink, `NT`/busy, busy-TSS LTR #GP and `TS`/CLTS readback       |
+| `0B` | Protected-mode segment-register moves; #UD/#GP/#NP/#SS for invalid selectors, types, privileges and presence                     |
+| `0C` | Immediate-byte PUSH sign extension, masking to a byte, and CBW/CWD                                                               |
+| `0D` | 16-bit LEA addressing forms and displacements                                                                                    |
+| `0F` | Base/index memory addressing, `BP`/`SS` defaults and explicit `DS`/`ES` overrides                                                |
+| `10` | Byte/word string operations in protected mode: both directions, index wrap, zero-count REP and REPE/REPNE early termination      |
+| `12` | Read-only data; `DS`/`ES` expand-up/down limits `0000h`/`FFFFh`, byte/word boundaries and faulting-write preservation; #GP/#SS   |
+| `16` | Direct/indirect near and far CALL/RET and stack-depth checks in protected mode                                                   |
+| `17` | ARPL with register/memory operands, changed/unchanged `RPL` and an unchanged read-only destination                               |
+| `18` | BOUND within limits and above the upper limit; #BR handler adjusts the bound and IRET retries the instruction                    |
+| `19` | Register/memory XCHG, including `SP`                                                                                             |
+| `1A` | ENTER allocation and frame copies at nesting levels 0, 1, 4 and 36 (masked to 4)                                                 |
+| `1B` | LEAVE stack-frame restoration                                                                                                    |
+| `1C` | VERR/VERW and register/memory LAR/LSL at `CPL` 0/3: selector/type/privilege checks, rights, limits, failed-query results         |
+| `EE` | 44 BCD observations, followed by 14,561 arithmetic/logical observations from 161 operation entries                               |
+| `FF` | Testing completed                                                                                                                |
 
 Test `EE` prints computational results without checking them against expected
 values during execution. Reaching POST `FF` confirms that the self-checking

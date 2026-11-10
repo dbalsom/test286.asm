@@ -68,7 +68,7 @@
 ; %1: expected TS bit in the machine status word (0 or 1).
 ;
 ; Run at CPL 0 with an initialized stack. AX is preserved; Flags are changed.
-; A mismatch jumps to error before TS is cleared.
+; Checks TS before CLTS, then reads MSW again to verify that TS was cleared.
 ;
 %macro validateTSandClear 1
     push    ax
@@ -77,5 +77,8 @@
     cmp     ax, (%1)*8
     jne     error
     clts
+    smsw    ax
+    test    ax, 8
+    jnz     error
     pop     ax
 %endmacro
